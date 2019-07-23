@@ -1,4 +1,4 @@
-This is a respository of my recent coding challenge results. 
+This is a repository of my recent coding challenge results. 
 I write code for the fun of it, and decided to put them in a centralized repo.
 
 This is my code. 100%. (Yes, you will see some terminology or variable names from other people solutions, because I do my research
