@@ -1,0 +1,728 @@
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
+
+
+/// This code accesses the OpenWeatherApp free daya and calculates average daily temp and prediction of percipitation
+/// for five days based on an input file or Db connect (hard coded class here), for city names.
+/// This is very rudimentary because city names (and no state in the free API) are not GPS coodinates.
+/// A true production system would have a GPS API city lookup.
+/// This is a basic exmaple of how API's might be are consumed.
+/// https://dotnetfiddle.net/OZdImg
+/// keeping classes and struct to one file for ease of using https://dotnetfiddle.net/OZdImg
+/// 
+namespace OpenWeatherMap
+{
+    public class Program
+    {
+		// IMHO exceptions are not error handling.
+        // for more complex systems I design state machines and handle error codes
+        // within that code through an Error and warning Handling Class.
+		// I added some validation checks around data from the API to ensure that 
+		// enumerable lists, arrays, and variables are valid before using them. This is the bare minimum fault checking in any system.
+		// TTD also means checking for all possible failure cases. Happy path can't be assumed in production!
+        public static void Main()
+        {
+            try
+            {
+                //Console.WriteLine("OpenWeatherMap - console version");
+                WeatherGetter wGb = new WeatherGetter();
+                wGb.WeatherGet();
+            }
+            catch (Exception ex)
+            {  
+                Console.WriteLine(@"Error: " + ex.Message);
+            }
+        }
+
+        class WeatherGetter
+        {
+            /*API call:
+                        api.openweathermap.org/data/2.5/forecast/daily?q={city name},{country code}&cnt={cnt}     */
+            //private const string URL = "https://objects.json";
+            // United States of America(the)États-Unis d'Amérique (les)  US USA 840
+            // test data: 
+            // api.openweathermap.org/data/2.5/weather?q=London,uk&APPID=d6c30ba9202aede4574c8842cfe8ec4a
+            // api.openweathermap.org/data/2.5/weather?q=Marlboro ,us&APPID=d6c30ba9202aede4574c8842cfe8ec4a
+            // api.openweathermap.org/data/2.5/weather?q=San Diego,us&APPID=d6c30ba9202aede4574c8842cfe8ec4a
+            // use forecast - that will give fice days.
+            // api.openweathermap.org/data/2.5/forecast/daily?q=Cheyenne,US&cnt=5
+
+            // normally this goes into a config file or a config table in a database.
+            public static int NumDays1 = 5;
+            public static int Num3HourPeriodsPerDay = 8;
+
+            /// <summary>
+            /// 
+            /// </summary>
+            public void WeatherGet()
+            {
+                try
+                {
+                    Cities cities = new Cities();
+                    // get city data from database 
+                    foreach (var city in cities.arrayCities)
+                    {
+                        //strip off the state. the "free" "demo api" accessed for weathermap.org doesn't use a state - this is a problem for any real production
+                        // if the comma doesn't exist then handle the error.
+                        Int32 idx = city.IndexOf(",");
+                        if (idx != -1)
+                        {
+                            string forecast = GetData(city.Substring(0, idx + 1) + "us"); // substring to the comma and keep the comma - then append the country code
+                                                                                          // parse the JSON
+                            WeatherRootObject wFj = ParseJsonObject(forecast);
+                            // write 5 days worth.
+                            AnalyzeAndWriteWeatherToConsole(wFj);
+                        }
+                        else
+                            Console.WriteLine("Error: City not found in data source.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(@"Error: " + ex.Message);
+                }                
+            }
+
+
+
+            /// <summary>
+            /// Honolulu, HI (01234)
+            ///
+            ///Date Avg Temp(F)
+            ///----------------------------
+            ///3/8/2017* 48.23 F
+            ///3/9/2017  44.23 F
+            ///3/10/2017  45.23 F
+            ///3/11/2017  46.23 F
+            ///3/12/2017* 47.23 F
+            /// </summary>
+            /// <param name = "wFj"></param>
+            private void AnalyzeAndWriteWeatherToConsole(WeatherRootObject wFj)
+            {
+                try
+                {
+                    // this free API from weathermap doesn't have states. They have country codes.
+                    // match the city to my list of cities, this does state lookup. not ideal. the API needs to be certain of the location
+                    // another way to do this is by verifying the gPS coordinates
+                    string cityState = string.Empty;
+                    Cities ctyClass = new Cities();
+                    foreach (var iterateCityState in ctyClass.arrayCities)
+                    {
+                        if (iterateCityState.Contains(wFj.city.name)) // the shorter name is in the wFJ class. swapped variables.
+                        {
+                            cityState = iterateCityState;
+                            break;
+                        }
+                    }
+
+                    Console.WriteLine(cityState);
+                    Console.Write("\n");
+                    Console.WriteLine("Date Avg Temp(F)");
+                    Console.WriteLine("----------------------------");
+                    PrecipitationPredictor Precip = new PrecipitationPredictor();
+                    int idx3Hours = 0;
+                    if (wFj.list.Count > 7 ) // sanity check: at least one day of data
+                    {
+                        // use 40 records, but 5 days at 8 hours per day. Subtract off one full day of 8.
+                        for (int i = 0; i < (wFj.list.Count - Num3HourPeriodsPerDay); i += idx3Hours) // appreantly we never hit that half-day. but still account for it.
+                        {
+                            // there's 8 qty 3hour period in a day of data 
+                            // sum the days data for the avergage.
+                            // at the same time count the number of heavy weather 3 hour periods. Any count about 0 is "precipitation"
+                            // this first day of data starts at the hour that you run a "get" from the API.
+                            //Average that day until midnight, then each of the 8 3hour periods after that. MVP
+                            CultureInfo culture = new CultureInfo("en-US");
+                            string currentDate = Convert.ToDateTime(wFj.list[i].dt_txt, culture).ToShortDateString();
+                            string tempDate;
+                            // calc avergae temp;
+                            idx3Hours = 0;
+                            int intPrecip = 0;
+                            double temperature = 0;
+                            for (; idx3Hours < 8; idx3Hours++) // 8-3 hours periods.
+                            {
+                                // if the date changes then break out.
+                                tempDate = Convert.ToDateTime(wFj.list[i + idx3Hours].dt_txt, culture).ToShortDateString();
+                                if (currentDate != tempDate)
+                                    break;
+                                // get total temps for the day
+                                temperature += wFj.list[i + idx3Hours].main.temp;
+                                // Get all heavy weather predictors
+
+
+                                foreach (var wet in wFj.list[i + idx3Hours].weather)
+                                {
+                                    intPrecip += (Precip.GetPotentialOfRain(wet.id) == true ? 1 : 0);
+                                    // one is enough.
+                                    if (intPrecip != 0)
+                                        break;
+                                }
+                            }
+
+                            // convert kelvin to Fahrenheit - normally put this in a class but it is quicker for a microservice to exist here.
+                            double AvgFahr = ((temperature / idx3Hours) - 273.15) * 9 / 5 + 32;
+                            Console.WriteLine(currentDate + (intPrecip != 0 ? "* " : "  ") + AvgFahr.ToString("0.00") + " F");
+                            // or use rounding this way: String.Format("{0:#,###.##}", value)
+                        }
+                    }
+                    Console.Write("\n");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(@"Error: " + ex.Message);
+                }
+            }
+
+            private WeatherRootObject ParseJsonObject(string forecast)
+            {
+                try
+                {
+                    // Make a stream to read from.
+                    MemoryStream stream = new MemoryStream();
+                    StreamWriter writer = new StreamWriter(stream);
+                    writer.Write(forecast);
+                    writer.Flush();
+                    stream.Position = 0;
+                    // Deserialize from the stream.
+                    DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(WeatherRootObject));
+                    WeatherRootObject wRo = JsonConvert.DeserializeObject<WeatherRootObject>(forecast);
+                    //WeatherRootObject wFj = (WeatherRootObject)serializer.ReadObject(stream);
+                    // Return the result.
+                    return wRo;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(@"Error: " + ex.Message);
+                }
+                return new WeatherRootObject();
+            }
+
+            public string GetData(string cityNameCommaCountry)
+            {
+                try
+                {
+                    string URL = "http://api.openweathermap.org"; //  + "&APPID=d6c30ba9202aede4574c8842cfe8ec4a";
+                                                                  /// One day of data
+                    //string urlParameters = "/data/2.5/weather?q=" + cityNameCommaCountry + "&APPID=d6c30ba9202aede4574c8842cfe8ec4a";
+                    //example: api.openweathermap.org/data/2.5/weather?q=Honolulu,us&APPID=d6c30ba9202aede4574c8842cfe8ec4a
+                    // api.openweathermap.org/data/2.5/forecast?q=London,us&mode=xml
+                    // get 5 days of data
+                    string urlParameters = "/data/2.5/forecast?q=" + cityNameCommaCountry + "&APPID=d6c30ba9202aede4574c8842cfe8ec4a";
+                    // example api.openweathermap.org/data/2.5/forecast?q=London,us&mode=xml
+                    HttpClient client = new HttpClient();
+                    client.BaseAddress = new Uri(URL);
+                    // accept header
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    // returned response
+                    //HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // wait for a response or timeout.
+                    string response = client.GetStringAsync(urlParameters).Result; // Blocking call! Program will wait here until a response is received or a timeout occurs.
+                    if (response == null && response == string.Empty) //.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine("response is null or empty failed."); // {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    }
+
+                    client.Dispose();
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(@"Error: " + ex.Message);
+                }
+                return string.Empty;
+            }
+        }
+        /// <summary>
+        ///  Weather data string.
+        /// </summary>
+        public class WeatherDataObject
+        {
+            public string Name
+            {
+                get;
+                set;
+            }
+        }
+
+        public class Cities
+        {
+            public string[] arrayCities = new string[] { "Marlboro, MA", "San Diego, CA", "Cheyenne, WY", "Anchorage, AK", "Austin, TX", "Orlando, FL", "Seattle, WA", "Cleveland, OH", "Portland, ME", "Honolulu, HI" };
+        }
+
+
+        public class PrecipitationPredictor
+        {
+            // The api doc states that it is possible to get multiple weather conditions and the first one is primary.
+            //NOTE: It is possible to meet more than one weather condition for a requested location.
+            // loop through all until at least one is found for the day in the hour periods.
+            public bool GetPotentialOfRain(int weatherId)
+            {
+                try
+                {
+                    if (weatherId != 0)
+                    {
+                        string firstdigit = weatherId.ToString().Substring(0, 1);
+                        foreach (var weather in arrayHeavyWeather)
+                        {
+                            if (firstdigit == weather.Substring(0, 1))
+                            {
+                                return true; // we have heavy weather. Leave now.
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Error in weatherId: " + ex);
+                }
+
+                return false;
+            }
+
+            public string[] arrayHeavyWeather = new string[]
+            {
+                "2xx: Thunderstorm", //precipitation
+                "3xx: Drizzle", //precipitation
+                "5xx: Rain", //precipitation
+                "6xx: Snow", //precipitation
+            };
+        }
+
+        //[DataContract]
+        public class WeatherRootObject
+        {
+            //[DataMember]
+            public string cod
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int message
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int cnt
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public List<List> list
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public City city
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Main1
+        {
+            //[DataMember]
+            public double temp
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public double feels_like
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public double temp_min
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public double temp_max
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int pressure
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int sea_level
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int grnd_level
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int humidity
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public double temp_kf
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Weather
+        {
+            //[DataMember]
+            public int id
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string main
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string description
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string icon
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Clouds
+        {
+            //[DataMember]
+            public int all
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Wind
+        {
+            //[DataMember]
+            public double speed
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int deg
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Sys
+        {
+            //[DataMember]
+            public string pod
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Snow
+        {
+            //[DataMember]
+            public double __invalid_name__3h
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class List
+        {
+            //[DataMember]
+            public int dt
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Main1 main
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public List<Weather> weather
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Clouds clouds
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Wind wind
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Sys sys
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string dt_txt
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Snow snow
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class Coord
+        {
+            //[DataMember]
+            public double lat
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public double lon
+            {
+                get;
+                set;
+            }
+        }
+
+        //[DataContract]
+        public class City
+        {
+            //[DataMember]
+            public int id
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string name
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public Coord coord
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public string country
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int population
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int timezone
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int sunrise
+            {
+                get;
+                set;
+            }
+
+            //[DataMember]
+            public int sunset
+            {
+                get;
+                set;
+            }
+        }
+    }
+}
+
+/*
+ Test data output
+ Marlboro, MA
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  38.98 F
+2/1/2020  33.22 F
+2/2/2020* 33.27 F
+2/3/2020* 39.60 F
+2/4/2020* 42.50 F
+
+San Diego, CA
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  61.40 F
+2/1/2020  67.53 F
+2/2/2020  66.07 F
+2/3/2020  55.29 F
+2/4/2020  52.09 F
+
+Cheyenne, WY
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  34.51 F
+2/1/2020  40.10 F
+2/2/2020  47.41 F
+2/3/2020* 28.35 F
+2/4/2020* 8.18 F
+
+Anchorage, AK
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  5.89 F
+2/1/2020* -3.56 F
+2/2/2020  -8.74 F
+2/3/2020  9.22 F
+2/4/2020* 16.22 F
+
+Austin, TX
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  52.44 F
+2/1/2020  50.56 F
+2/2/2020  55.47 F
+2/3/2020  59.32 F
+2/4/2020  66.32 F
+
+Orlando, FL
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  74.22 F
+2/1/2020* 64.84 F
+2/2/2020  57.81 F
+2/3/2020  57.56 F
+2/4/2020  64.10 F
+
+Seattle, WA
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020* 53.31 F
+2/1/2020* 51.24 F
+2/2/2020* 36.89 F
+2/3/2020* 34.65 F
+2/4/2020  34.04 F
+
+Cleveland, OH
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  34.73 F
+2/1/2020  32.08 F
+2/2/2020* 35.69 F
+2/3/2020  40.88 F
+2/4/2020* 46.13 F
+
+Portland, ME
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020  54.93 F
+2/1/2020* 51.86 F
+2/2/2020* 40.37 F
+2/3/2020* 35.69 F
+2/4/2020* 35.39 F
+
+Honolulu, HI
+
+Date Avg Temp(F)
+----------------------------
+1/31/2020* 71.04 F
+2/1/2020* 69.29 F
+2/2/2020* 68.17 F
+2/3/2020* 69.07 F
+2/4/2020* 70.32 F
+
+     
+     */
