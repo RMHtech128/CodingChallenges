@@ -4,6 +4,4 @@ Due to limitations on the number of files allowed for this repo, you will find t
 The visual studio project and solution files, libraries, dll references, configs, etc are excluded.
 
 
-"# CodingChallenges" 
-"# CodingChallenges" 
 "#CodingChallenges" 
