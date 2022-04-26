@@ -1,0 +1,61 @@
+This is how an application for a gps mapping system, or video game
+would find the line of sight or shortest distance to a waypoint.
+
+
+ 
+
+        public bool CheckLOS(Mo moShooter, Mo moTarget)
+        {
+            
+            double Opp = 0;
+
+            Int64 delX = (moShooter.gridPos.x - moTarget.gridPos.x);
+            Int64 delY = (moShooter.gridPos.y - moTarget.gridPos.y);
+            Int64 angleInDegrees = Convert.ToInt64(Math.Atan2(delY, delX) * 180 / Math.PI);
+
+            double lastx = moShooter.gridPos.x;
+            double lasty = moShooter.gridPos.y;
+
+            for (double Adj = 1; Adj < delX; Adj++)
+            { // we have Adjacent (x) and Angle.
+                //Calculate opposite (y)
+                // Tangent angle = Opp / Adjacent
+                // solve for Opposite
+                // Adjacent X Tan Angle = Opposite
+
+                Opp = Adj * Math.Tan(angleInDegrees);
+                // now check grid position for x,y (which is Adj,Opp) and see if it is a tv.Road
+                // if any are not a tv.Road then return false,
+                // else continue to end and return true.
+                // Add opp and adjacent back into the mo and check the grid corrdinates on the map
+                double xCheckGrid = Math.Abs(moShooter.gridPos.x - Adj);
+                double yCheckGrid = Math.Abs(moShooter.gridPos.y - Opp);
+
+                // Make certain I look at all the grids and don't skip any between shooter and target.
+                if (xCheckGrid > lastx + 1)
+                {
+                    xCheckGrid = lastx + 1;
+                    lastx = xCheckGrid;
+                }
+                else if (xCheckGrid < lastx - 1)
+                {
+                    xCheckGrid = lastx - 1;
+                    lastx = xCheckGrid;
+                }
+                if (yCheckGrid > lasty + 1)
+                {
+                    yCheckGrid = lasty + 1;
+                    lasty = yCheckGrid;
+                }
+                else if (yCheckGrid < lasty - 1)
+                {
+                    yCheckGrid = lasty - 1;
+                    lasty = yCheckGrid;
+                }
+
+
+                if (map2.map2Value[Convert.ToInt16(yCheckGrid), Convert.ToInt16(xCheckGrid)] != tv.Road)
+                    return false;
+            }
+            return true;
+        }

@@ -1,0 +1,25 @@
+Deserializing JSON object streams        
+
+	   private WeatherRootObject ParseJsonObject(string forecast)
+            {
+                try
+                {
+                    // Create a stream to read from.
+                    MemoryStream stream = new MemoryStream();
+                    StreamWriter writer = new StreamWriter(stream);
+                    writer.Write(forecast);
+                    writer.Flush();
+                    stream.Position = 0;
+                    // Deserialize from the stream.
+                    DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(WeatherRootObject));
+                    WeatherRootObject wRo = JsonConvert.DeserializeObject<WeatherRootObject>(forecast);
+                    //WeatherRootObject wFj = (WeatherRootObject)serializer.ReadObject(stream);
+                    // Return the result.
+                    return wRo;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(@"Error: " + ex.Message);
+                }
+                return new WeatherRootObject();
+            }

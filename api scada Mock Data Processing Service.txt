@@ -1,0 +1,173 @@
+﻿
+namespace xxxxxxxxxxxxxx.Implementation
+{
+    [Export("MOCK", typeof(IService))]
+    public class MockService : IService
+    {
+        private readonly Random _rand = new Random();
+        private readonly bool _isProcessorAffinity =
+                                Convert.ToBoolean(ConfigurationManager.AppSettings["PROCESSOR_AFFINITY"]);
+
+        #region IService Members
+        [RegisterInterest(Topic.DashboardServiceGetData, TaskType.Background)]
+        public void GetData(object payload = null)
+        {
+            //ThreadPool.QueueUserWorkItem
+            //    (
+            //       _=>
+            {
+                for (; ; )
+                {
+                    if (_isProcessorAffinity) ProcessorAffinity.BeginAffinity(0);
+                    Thread.Sleep(1);
+                    var key = String.Intern("R" + _rand.Next(200, 500));
+                    int prop = _rand.Next(1, 24);
+                    string propName = string.Empty;
+                    object propValue = null;
+
+
+
+                    switch (prop)
+                    {
+                        case 1:
+                            propName = "AD_On";
+                            propValue = _rand.Next(0,2).ToString();
+                            break;
+                        case 2:
+                            propName = "ADctrl_ROPActive";
+                            propValue = _rand.Next(0,2).ToString();
+                            break;
+                        case 3:
+                            propName = "ADctrl_WOBActive";
+                            propValue = _rand.Next(0,2).ToString();
+                            break;
+                        case 4:
+                            propName = "ADctrl_TorqueActive";
+                            propValue = _rand.Next(0,2).ToString();
+                            break;
+                        case 5:
+                            propName = "ADctrl_DeltaPActive";
+                            propValue = _rand.Next(0,5).ToString();
+                            break;
+                        case 6:
+                            propName = "HookLoad";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 7:
+                            propName = "RigAirPr";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 8:
+                            propName = "Emergenc";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 9:
+                            propName = "ParkBrak";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 10:
+                            propName = "RegenBra";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 11:
+                            propName = "DrawWork";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 12:
+                            propName = "PowerLim";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 13:
+                            propName = "BlockPos";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 14:
+                            propName = "TopDrive";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 15:
+                            propName = "ElevPosi";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 16:
+                            propName = "Rop";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 17:
+                            propName = "RopSetPo";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 18:
+                            propName = "Wob";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 19:
+                            propName = "WobSetPo";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 20:
+                            propName = "Torque";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 21:
+                            propName = "TorqueSe";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 22:
+                            propName = "DeltaP";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                        case 23:
+                            propName = "DeltaPSe";
+                            propValue = _rand.Next(50, 300).ToString();
+                            break;
+                    }
+                    EventHandler<EventArgs<DataRecord>> handler = DataReceived;
+                    if (handler != null)
+                    {
+                        handler(this, new EventArgs<DataRecord>(new DataRecord(key, String.Intern(propName), propValue)));
+                    }
+                }
+            }
+            //);
+        }
+
+        private string GetColor(int num)
+        {
+            string color = "Gray";
+            switch (num)
+            {
+                case 1:
+                    color = "Gray";
+                    break;
+                case 2:
+                    color = "White";
+                    break;
+                case 3:
+                    color = "Green";
+                    break;
+                case 4:
+                    color = "Black";
+                    break;
+                case 5:
+                    color = "Orange";
+                    break;
+                case 6:
+                    color = "Yellow";
+                    break;
+                case 7:
+                    color = "Cyan";
+                    break;               
+            }
+            return color;
+        }
+
+        public event EventHandler<EventArgs<DataRecord>> DataReceived;
+
+        public AssetType AssetType { get { return AssetType.Status; } }
+
+        #endregion
+
+
+    }
+}
