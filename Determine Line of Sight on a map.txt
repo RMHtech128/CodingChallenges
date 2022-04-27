@@ -1,6 +1,6 @@
 This is how an application for a gps mapping system, or video game
 would find the line of sight or shortest distance to a waypoint.
-
+It uses Pythagornian Theorum. Therefore, yes, high school math is used in the real world on occasion!
 
  
 
