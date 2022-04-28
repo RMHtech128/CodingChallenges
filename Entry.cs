@@ -26,13 +26,14 @@ namespace CodilityPracticeTest
             return str;
         }
 
-        //public static void Main(string[] args)
-        //{
-        //    Entry entry = new Entry();
-        //    entry.Enter("AB54321");
-        //    entry.Enter("UK32032");
-        //    Console.WriteLine(entry.Leave());
-        //    Console.WriteLine(entry.Leave());
-        //}
+        // how to use
+        public static void Main(string[] args)
+        {
+            Entry entry = new Entry();
+            entry.Enter("AB54321");
+            entry.Enter("UK32032");
+            Console.WriteLine(entry.Leave());
+            Console.WriteLine(entry.Leave());
+        }
     }
 }
